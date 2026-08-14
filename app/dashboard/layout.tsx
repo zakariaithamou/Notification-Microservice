@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Home, FileText, Rocket } from "lucide-react";
+import { Home, FileText, ChartNoAxesCombined, LogOut } from "lucide-react";
+
 export default function DashboardLayout({
   children,
 }: {
@@ -21,7 +22,7 @@ export default function DashboardLayout({
   const navLinks = [
     { name: "Overview", href: "/dashboard", icon: Home },
     { name: "Templates", href: "/dashboard/templates", icon: FileText },
-    { name: "Trigger API", href: "/dashboard/trigger", icon: Rocket },
+    { name: "Metrics", href: "/dashboard/metrics", icon: ChartNoAxesCombined },
   ];
   return (
     <div className="flex h-screen bg-gray-100">
@@ -58,6 +59,7 @@ export default function DashboardLayout({
             onClick={handleLogout}
             className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm text-red-400 hover:bg-slate-800 rounded-lg transition-colors"
           >
+            <LogOut size={18} />
             Log out
           </button>
         </div>

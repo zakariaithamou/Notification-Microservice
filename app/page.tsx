@@ -4,59 +4,100 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
-  const [departmentId, setDepartmentId] = useState("");
-  const [apiKey, setApiKey] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [otpCode, setOtpCode] = useState("");
+  const [step, setStep] = useState<1 | 2 | 3>(1); // Step 1: Login, Step 2: OTP, Step 3: Update Password
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setIsLoading(true);
 
-    if (!departmentId.trim() || !apiKey.trim()) {
-      setError("Both Department ID and API Key are required.");
-      setIsLoading(false);
-      return;
-    }
-
     try {
-      // Calling your specific endpoint and passing the key in the headers
-      const response = await fetch(`/api/departments/${departmentId}`, {
-        method: "GET",
-        headers: {
-          "x-api-key": apiKey,
-          "Content-Type": "application/json",
-        },
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
       });
 
       const result = await response.json();
 
-      if (!response.ok) {
-        // Extracts the specific error message from your centralized error handler
-        throw new Error(
-          result.error ||
-            "Authentication failed. Please check your credentials.",
-        );
+      if (!response.ok) throw new Error(result.error || "Login failed");
+
+      if (result.status === "OTP_REQUIRED") {
+        setStep(2);
+      } else if (result.status === "LOGGED_IN") {
+        // skip the OTP
+        router.push("/dashboard");
       }
+    } catch (err: unknown) {
+      setError((err as Error).message || "An unexpected error occurred.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-      // Success! Store the credentials so the dashboard can use them for subsequent API calls
-      localStorage.setItem("demo_departmentId", departmentId);
-      localStorage.setItem("demo_apiKey", apiKey);
+  const handleOtpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setIsLoading(true);
 
-      // Store the department name if it exists in your schema for UI personalization later
-      if (result.data?.name) {
-        localStorage.setItem("demo_departmentName", result.data.name);
+    try {
+      const response = await fetch("/api/auth/verify-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, otpCode }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) throw new Error(result.error || "Verification failed");
+
+      // Success! The cookie is automatically set by the browser.
+
+      if (result.status === "REQUIRE_NEW_PASSWORD") {
+        setStep(3);
+      } else {
+        router.push("/dashboard");
       }
+    } catch (err: unknown) {
+      setError((err as Error).message || "Invalid verification code.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  const handleNewPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
 
-      // Route to the split-pane dashboard
+    if (newPassword !== confirmPassword) {
+      setError("Passwords do not match.");
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const response = await fetch("/api/auth/update-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ newPassword }),
+      });
+
+      const result = await response.json();
+      if (!response.ok)
+        throw new Error(result.error || "Failed to update password");
+
+      // Success! Password updated, timer removed, send them to the dashboard
       router.push("/dashboard");
     } catch (err: unknown) {
-      setError(
-        (err as Error).message ||
-          "An unexpected error occurred connecting to the server.",
-      );
+      setError((err as Error).message || "An error occurred.");
     } finally {
       setIsLoading(false);
     }
@@ -74,46 +115,127 @@ export default function LoginPage() {
           </p>
         </div>
 
-        <form className="mt-8 space-y-6" onSubmit={handleLogin}>
+        <form
+          className="mt-8 space-y-6"
+          onSubmit={
+            step === 1
+              ? handlePasswordSubmit
+              : step === 2
+                ? handleOtpSubmit
+                : handleNewPasswordSubmit
+          }
+        >
           <div className="space-y-4 rounded-md shadow-sm">
-            <div>
-              <label
-                htmlFor="departmentId"
-                className="block text-center text-sm font-medium text-gray-700"
-              >
-                Department ID
-              </label>
-              <input
-                id="departmentId"
-                name="departmentId"
-                type="text"
-                required
-                disabled={isLoading}
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm disabled:bg-gray-100"
-                placeholder="Paste your Department ID here"
-                value={departmentId}
-                onChange={(e) => setDepartmentId(e.target.value)}
-              />
-            </div>
-            <div>
-              <label
-                htmlFor="apiKey"
-                className="block text-center text-sm font-medium text-gray-700"
-              >
-                Department API Key
-              </label>
-              <input
-                id="apiKey"
-                name="apiKey"
-                type="password"
-                required
-                disabled={isLoading}
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm disabled:bg-gray-100"
-                placeholder="Paste your API key here"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-              />
-            </div>
+            {step === 1 && (
+              <>
+                <div>
+                  <label
+                    htmlFor="email"
+                    className="block text-center text-sm font-medium text-gray-700"
+                  >
+                    Department Email
+                  </label>
+                  <input
+                    id="email"
+                    type="email"
+                    required
+                    disabled={isLoading}
+                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm disabled:bg-gray-100"
+                    placeholder="dept@university.edu"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label
+                    htmlFor="password"
+                    className="block text-center text-sm font-medium text-gray-700"
+                  >
+                    Password
+                  </label>
+                  <input
+                    id="password"
+                    type="password"
+                    required
+                    disabled={isLoading}
+                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm disabled:bg-gray-100"
+                    placeholder="Enter your password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                </div>
+              </>
+            )}
+
+            {step === 2 && (
+              <div>
+                <label
+                  htmlFor="otpCode"
+                  className="block text-center text-sm font-medium text-gray-700"
+                >
+                  Verification Code
+                </label>
+                <p className="text-xs text-center text-gray-500 mb-2">
+                  We sent a 6-digit code to {email}
+                </p>
+                <input
+                  id="otpCode"
+                  type="text"
+                  required
+                  maxLength={6}
+                  disabled={isLoading}
+                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-center text-2xl tracking-widest text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-blue-500 disabled:bg-gray-100"
+                  placeholder="------"
+                  value={otpCode}
+                  onChange={(e) => setOtpCode(e.target.value)}
+                />
+              </div>
+            )}
+
+            {step === 3 && (
+              <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+                <div className="text-center mb-6">
+                  <h3 className="text-lg font-bold text-gray-900">
+                    Set Permanent Password
+                  </h3>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Please change your temporary administrator password to
+                    continue.
+                  </p>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      New Password
+                    </label>
+                    <input
+                      type="password"
+                      required
+                      minLength={8}
+                      disabled={isLoading}
+                      className="block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 focus:border-blue-500 focus:outline-none sm:text-sm disabled:bg-gray-100"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Confirm New Password
+                    </label>
+                    <input
+                      type="password"
+                      required
+                      minLength={8}
+                      disabled={isLoading}
+                      className="block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 focus:border-blue-500 focus:outline-none sm:text-sm disabled:bg-gray-100"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {error && (
@@ -128,8 +250,28 @@ export default function LoginPage() {
               disabled={isLoading}
               className="group relative flex w-full justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors disabled:opacity-70"
             >
-              {isLoading ? "Authenticating..." : "Connect"}
+              {isLoading
+                ? "Processing..."
+                : step === 1
+                  ? "Sign In"
+                  : step === 2
+                    ? "Verify Code"
+                    : "Save & Continue"}
             </button>
+
+            {step === 2 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setStep(1);
+                  setOtpCode("");
+                  setError("");
+                }}
+                className="mt-4 w-full text-sm text-blue-600 hover:text-blue-500"
+              >
+                Back to Login
+              </button>
+            )}
           </div>
         </form>
       </div>

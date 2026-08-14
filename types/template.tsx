@@ -7,7 +7,8 @@ export interface Template {
   subject?: string;
   body: string;
   departmentId: string;
-  createdAt: string; // MongoDB Dates arrive as strings via JSON
+  templateType?: "single" | "diffusion";
+  createdAt: string;
 }
 
 export interface CreateTemplateInput {
@@ -18,7 +19,7 @@ export interface CreateTemplateInput {
   templateType?: "single" | "diffusion";
 }
 
-// API Response Wrappers based on your NextResponse structure
+// API Response Wrappers based on NextResponse structure
 export interface TemplatesListResponse {
   success: boolean;
   data: Template[];

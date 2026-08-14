@@ -1,26 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyApiKey } from "@/utils/verifyApiKey";
+import { getSession } from "@/lib/auth/session";
 import { getNotificationByIdService } from "@/services/notification.service";
 import { handleErrorResponse } from "@/utils/apiResponse";
 
+export const dynamic = "force-dynamic";
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    // 1. Authenticate the department
-    const apiKey = req.headers.get("x-api-key") as string;
-    const department = await verifyApiKey(apiKey);
+    const session = await getSession();
 
-    // 2. Unwrap the params for Next.js 15+
+    if (!session) {
+      return NextResponse.json(
+        { success: false, error: "UNAUTHORIZED: No session found" },
+        { status: 401 },
+      );
+    }
+
     const resolvedParams = await params;
     const notificationId = resolvedParams.id;
 
-    // 3. Call the service layer, passing BOTH the ID and the Department ID
     const notification = await getNotificationByIdService(
       notificationId,
-      String(department._id),
+      session.departmentId,
     );
+
+    //// console.log("BACKEND DATA CHECK:", JSON.stringify(notification.providerId, null, 2));
 
     return NextResponse.json(
       {

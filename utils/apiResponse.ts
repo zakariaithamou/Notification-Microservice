@@ -11,7 +11,7 @@ export function handleErrorResponse(error: unknown) {
     errorMessage = error;
   }
 
-  // 2. Route the specific error types
+  // Map known error types
   if (errorMessage.includes("VALIDATION_ERROR")) {
     return NextResponse.json(
       { success: false, error: errorMessage.replace("VALIDATION_ERROR: ", "") },
@@ -35,7 +35,7 @@ export function handleErrorResponse(error: unknown) {
   if (errorMessage.includes("UNAUTHORIZED")) {
     return NextResponse.json(
       { success: false, error: errorMessage.replace("UNAUTHORIZED: ", "") },
-      { status: 401 }, // 401 is the standard HTTP status code for authentication failures
+      { status: 401 },
     );
   }
 

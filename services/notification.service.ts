@@ -1,18 +1,21 @@
 import mongoose from "mongoose";
-import Notification from "@/db/models/Notification"; // Update path to "@/db/models/..." if needed
+import Notification from "@/db/models/Notification";
 import Department from "@/db/models/Department";
 import Template from "@/db/models/Template";
 import { emailService, SendEmailPayload } from "./emailService";
+import { publishToQueue } from "@/lib/queues/rabbitmq";
 
-// 1. Strict input interface tailored to what the client should send
+// Notification payload
 export interface CreateNotificationInput {
   departmentId: string;
   templateId: string;
   channel: "email" | "sms" | "push" | "whatsapp";
-  recipients: Record<string, unknown>[]; // Matches your INotificationRecipient structure
+  recipients: Record<string, unknown>[];
   variables?: Record<string, unknown>;
   renderedSubject?: string;
   renderedBody: string;
+  departmentName?: string; // NEW
+  departmentEmail?: string;
 }
 
 export const createNotificationService = async (
@@ -28,7 +31,7 @@ export const createNotificationService = async (
     renderedBody,
   } = data;
 
-  // 1. Validate IDs
+  // Validate IDs
   if (!departmentId || !mongoose.Types.ObjectId.isValid(departmentId)) {
     throw new Error("VALIDATION_ERROR: A valid department ID is required.");
   }
@@ -36,7 +39,7 @@ export const createNotificationService = async (
     throw new Error("VALIDATION_ERROR: A valid template ID is required.");
   }
 
-  // 2. Validate Enums & Arrays
+  // Validate enums and arrays
   const validChannels = ["email", "sms", "push", "whatsapp"];
   if (!channel || !validChannels.includes(channel)) {
     throw new Error(
@@ -48,7 +51,7 @@ export const createNotificationService = async (
     throw new Error("VALIDATION_ERROR: At least one recipient is required.");
   }
 
-  // 3. Validate Body
+  // Validate body
   if (
     !renderedBody ||
     typeof renderedBody !== "string" ||
@@ -57,7 +60,7 @@ export const createNotificationService = async (
     throw new Error("VALIDATION_ERROR: Rendered body is required.");
   }
 
-  // 4. Verify Department and Template actually exist in the database
+  // Verify referenced documents
   const existingDept = await Department.findById(departmentId);
   if (!existingDept) {
     throw new Error(
@@ -70,7 +73,7 @@ export const createNotificationService = async (
     throw new Error("NOT_FOUND_ERROR: The specified template does not exist.");
   }
 
-  // 5. Create the Notification
+  // Create the notification
   const newNotification = await Notification.create({
     departmentId,
     templateId,
@@ -83,6 +86,20 @@ export const createNotificationService = async (
     attempts: 0,
     maxAttempts: 3,
   });
+  const customSender = `${existingDept.name} <${existingDept.contactEmail}>`;
+
+  // NEW: Push the ID AND the custom sender to RabbitMQ immediately after saving to MongoDB
+  try {
+    await publishToQueue({
+      notificationId: newNotification._id.toString(),
+      from: customSender, // <-- We hand this off to the worker!
+    });
+
+    console.log(`📥 Published notification ${newNotification._id} to queue`);
+  } catch (error) {
+    console.error("Failed to publish to queue, but saved to DB:", error);
+    // Even if RabbitMQ fails, it's in the DB as 'pending' so it's not lost forever
+  }
 
   return newNotification;
 };
@@ -128,44 +145,216 @@ export const getNotificationByIdService = async (
 
 export async function processAndSendEmail(
   notificationId: string | mongoose.Types.ObjectId,
-  payload: SendEmailPayload,
+  payload: SendEmailPayload[],
 ) {
-  // 1. Mark as 'sending' and increment the attempts counter BEFORE dispatching
-  await Notification.findByIdAndUpdate(notificationId, {
-    $set: { status: "sending" },
-    $inc: { attempts: 1 }, // Increments the attempt count by 1
-  });
+  console.log(
+    `Sending batch of ${payload.length} emails for Notification ID: ${notificationId}`,
+  );
+  // Dispatch the email via the email provider (Resend)
 
-  // 2. Dispatch the email
-  const emailResult = await emailService.sendEmail(payload);
+  const emailResult = await emailService.sendBatchEmails(payload);
+  console.log("RESEND RAW RESPONSE:", JSON.stringify(emailResult, null, 2));
+  // Success: return the result so the caller emailWorker can track it
+  if (emailResult.success && emailResult.data) {
+    let providerObjects: { id: string; email: string; status: string }[] = [];
+    const responseData = emailResult.data as { data?: unknown[] } | unknown[];
 
-  // 3. Handle a successful delivery
-  if (emailResult.success) {
-    console.log(`Updating DB: Notification ${notificationId} marked as sent.`);
+    const rawData = Array.isArray(responseData)
+      ? responseData
+      : responseData?.data;
 
-    await Notification.findByIdAndUpdate(notificationId, {
-      $set: {
-        status: "sent",
-        sentAt: new Date(),
-      },
-    });
+    if (Array.isArray(rawData)) {
+      providerObjects = rawData
 
-    return { success: true, messageId: emailResult.messageId };
+        .map((item: unknown, index: number) => {
+          const resendItem = item as Record<string, unknown>;
+          const itemId =
+            typeof resendItem?.id === "string" ? resendItem.id : "";
+
+          const toField = payload[index]?.to;
+          const emailAddress = Array.isArray(toField) ? toField[0] : toField;
+
+          return {
+            id: itemId,
+            email: typeof emailAddress === "string" ? emailAddress : "",
+            status: "sent",
+          };
+        })
+
+        .filter((obj) => obj.id !== "");
+    }
+
+    return { success: true, providerIds: providerObjects };
   }
-
-  // 4. Handle a failed delivery
-  console.log(`Updating DB: Notification ${notificationId} marked as failed.`);
-
-  await Notification.findByIdAndUpdate(notificationId, {
-    $set: {
-      status: "failed",
-      lastError: String(emailResult.error), // Matches your schema's lastError field
-    },
-  });
 
   return { success: false, error: emailResult.error };
 }
 
+interface MetricsOptions {
+  days?: number;
+  channel?: "all" | "email" | "sms" | "push" | "whatsapp";
+}
+
+const STATUS_LIST = [
+  "pending",
+  "sending",
+  "sent",
+  "delivered",
+  "opened",
+  "failed",
+  "retrying",
+  "cancelled",
+] as const;
+
+type StatusCounts = Record<(typeof STATUS_LIST)[number], number>;
+type DayBucket = { date: string } & StatusCounts;
+
+const formatDayKey = (d: Date) => d.toISOString().split("T")[0]; // YYYY-MM-DD
+const formatDayLabel = (d: Date) =>
+  d.toLocaleDateString("en-US", { month: "short", day: "2-digit" }); // "Aug 01"
+
+const createEmptyStatusCounts = (): StatusCounts =>
+  STATUS_LIST.reduce((acc, status) => {
+    acc[status] = 0;
+    return acc;
+  }, {} as StatusCounts);
+
+export const getMetricsService = async (
+  departmentId: string,
+  options: MetricsOptions = {},
+) => {
+  if (!mongoose.Types.ObjectId.isValid(departmentId)) {
+    throw new Error("VALIDATION_ERROR: Invalid department ID format.");
+  }
+
+  const days = options.days ?? 15;
+  const channel = options.channel ?? "all";
+
+  const now = new Date();
+  const startDate = new Date(now);
+  startDate.setDate(startDate.getDate() - (days - 1));
+  startDate.setHours(0, 0, 0, 0);
+
+  const filter: Record<string, unknown> = {
+    departmentId,
+    createdAt: { $gte: startDate },
+  };
+  if (channel !== "all") {
+    filter.channel = channel;
+  }
+
+  const notifications = await Notification.find(filter).lean();
+
+  // Initialize a bucket per day in the range, zeroed for every status.
+  const buckets = new Map<string, DayBucket>();
+
+  for (let i = 0; i < days; i++) {
+    const d = new Date(startDate);
+    d.setDate(d.getDate() + i);
+    const key = formatDayKey(d);
+    buckets.set(key, {
+      date: formatDayLabel(d),
+      ...createEmptyStatusCounts(),
+    });
+  }
+
+  const bumpBucket = (
+    date: Date | undefined,
+    status: (typeof STATUS_LIST)[number],
+  ) => {
+    if (!date) return;
+    const key = formatDayKey(date);
+    const bucket = buckets.get(key);
+    if (bucket) {
+      bucket[status] = bucket[status] + 1;
+    }
+  };
+  let totalSent = 0;
+  let totalDelivered = 0;
+
+  for (const n of notifications) {
+    // Event-based lines
+    const sentDate = n.sentAt ? new Date(n.sentAt) : undefined;
+
+    if (sentDate) {
+      bumpBucket(sentDate, "sent");
+      totalSent += 1;
+    }
+    const providerRecords = Array.isArray(n.providerId) ? n.providerId : [];
+
+    const deliveredEntry = providerRecords.find((p) => p.deliveredAt);
+    if (deliveredEntry?.deliveredAt) {
+      bumpBucket(new Date(deliveredEntry.deliveredAt), "delivered");
+      totalDelivered += 1;
+    } else if (n.status === "delivered" && sentDate) {
+      bumpBucket(sentDate, "delivered");
+      totalDelivered += 1;
+    }
+
+    const openedEntry = providerRecords.find((p) => p.openedAt);
+    if (openedEntry?.openedAt) {
+      bumpBucket(new Date(openedEntry.openedAt), "opened");
+    }
+
+    const failedEntry = providerRecords.find((p) => p.failedAt);
+    if (failedEntry?.failedAt) {
+      bumpBucket(new Date(failedEntry.failedAt), "failed");
+    } else if (n.status === "failed") {
+      bumpBucket(new Date(n.updatedAt ?? n.createdAt), "failed");
+    }
+
+    // Snapshot-based lines: no history, just "currently in this state".
+    if (["pending", "sending", "retrying", "cancelled"].includes(n.status)) {
+      bumpBucket(
+        new Date(n.createdAt),
+        n.status as (typeof STATUS_LIST)[number],
+      );
+    }
+  }
+
+  const timeline = Array.from(buckets.values());
+
+  return {
+    summary: {
+      total: notifications.length,
+      totalSent,
+      deliverabilityRate:
+        totalSent > 0
+          ? Number(((totalDelivered / totalSent) * 100).toFixed(2))
+          : 0,
+    },
+    timeline,
+  };
+};
+
+/**
+ * [FALLBACK---UNUSED] processNotificationQueue
+ * ------------------------------------------------
+ * Purpose: DB "sweeper" that scans MongoDB for any Notification documents
+ * stuck with status: "pending" and attempts to send them via processAndSendEmail().
+ *
+ * Why:
+ * 1.This was designed as a safety net for cases where a notification got saved
+ * to the DB but never made it into RabbitMQ (e.g. publishToQueue() failed
+ * because RabbitMQ was down/unreachable at the time).
+ *
+ *
+ * 2.The app relies fully on RabbitMQ + emailWorker.ts for real-time processing.
+ * emailWorker.ts consumes messages the instant they're published — there is
+ * no polling or cron job calling this function, so it currently does nothing.
+ *
+ * When to re-enable:
+ * If you add a cron job / scheduled task (e.g. via node-cron, a serverless
+ * scheduled function, or a setInterval) to periodically catch notifications
+ * that failed to reach the queue, uncomment this and wire it up to that trigger.
+ * 2.  ihave Created an API route, /api/worker, that calls processNotificationQueue()
+ *      and returns the result. Example:
+ *
+ *   3. To "wake up" the worker and send pending emails, visit/hit:
+ *      http://localhost:3000/api/worker
+ *      (adjust port/domain to match your setup)
+ *
+ */
 export async function processNotificationQueue() {
   console.log("Worker: Scanning for pending notifications...");
 
@@ -185,30 +374,63 @@ export async function processNotificationQueue() {
 
   let successCount = 0;
   let failCount = 0;
-
   // 2. Loop through each pending job
   for (const notification of pendingNotifications) {
     try {
-      // Extract the email addresses from your recipient objects
-      const emailAddresses = notification.recipients.map((r) => r.address);
-
-      // Build the payload directly from the database document
-      const payload = {
-        to: emailAddresses,
-        subject: notification.renderedSubject || "No Subject",
-        html: notification.renderedBody,
+      // Cast the populated department to avoid 'any' type
+      const dept = notification.departmentId as unknown as {
+        name: string;
+        contactEmail: string;
       };
 
-      // 3. Call your existing processor
-      const result = await processAndSendEmail(notification._id, payload);
+      // Safely build customFrom with a fallback if dept is missing
+      const customFrom =
+        dept && dept.name && dept.contactEmail
+          ? `${dept.name} <${dept.contactEmail}>`
+          : undefined;
 
-      if (result.success) successCount++;
-      else failCount++;
+      for (const recipient of notification.recipients) {
+        const emailPayload: SendEmailPayload = {
+          from: customFrom,
+          to: [recipient.address],
+          subject: notification.renderedSubject || "No Subject",
+          html: notification.renderedBody,
+        };
+
+        const result = await processAndSendEmail(
+          notification._id,
+          emailPayload,
+        );
+
+        if (result.success) successCount++;
+      }
+
+      const recipientSuccessCount = 0;
+      const totalRecipients = notification.recipients.length;
+
+      // Decide ONE status for the whole notification based on recipient outcomes
+      if (recipientSuccessCount === totalRecipients) {
+        // All recipients got the email
+        notification.status = "sent";
+        successCount++;
+      } else if (recipientSuccessCount > 0) {
+        // Some got it, some didn't — still counted as sent (partial delivery is ok)
+        notification.status = "sent";
+        successCount++;
+      } else {
+        // Nobody got it
+        notification.status = "failed";
+        failCount++;
+      }
+
+      await notification.save();
     } catch (error) {
       console.error(
         `Worker: Failed to process notification ${notification._id}`,
         error,
       );
+      notification.status = "failed";
+      await notification.save();
       failCount++;
     }
   }

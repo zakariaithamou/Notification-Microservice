@@ -8,7 +8,14 @@ export type NotificationChannel = "email" | "sms" | "push" | "whatsapp";
 //Lifecycle status of a notification.
 
 export type NotificationStatus =
-  "pending" | "sending" | "sent" | "failed" | "retrying" | "cancelled";
+  | "pending"
+  | "sending"
+  | "sent"
+  | "failed"
+  | "retrying"
+  | "cancelled"
+  | "delivered"
+  | "opened";
 
 /**
  * A single recipient target for the notification.
@@ -36,8 +43,25 @@ export interface INotification extends Document {
   maxAttempts: number;
   nextRetryAt?: Date;
   lastError?: string;
-  createdAt: Date;
+
   sentAt?: Date;
+  providerId?: {
+    id: string;
+    email: string;
+    status: string;
+    deliveredAt?: Date;
+    openedAt?: Date;
+    failedAt?: Date;
+    failedDetails?: {
+      type: string;
+      subType: string;
+      message: string;
+      suggestedActions?: string[];
+    };
+  }[];
+
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 const NotificationRecipientSchema = new Schema<INotificationRecipient>(
@@ -105,6 +129,26 @@ const NotificationSchema = new Schema<INotification>(
       type: String,
       required: [true, "renderedBody is required"],
     },
+    providerId: [
+      {
+        id: { type: String, index: true },
+        email: { type: String },
+        status: { type: String },
+        deliveredAt: { type: Date },
+        openedAt: { type: Date },
+        failedAt: { type: Date },
+        failedDetails: {
+          type: {
+            type: String,
+          },
+          subType: { type: String },
+          message: { type: String },
+          suggestedActions: [{ type: String }],
+        },
+      },
+    ],
+
+    sentAt: { type: Date },
 
     status: {
       type: String,
@@ -116,7 +160,10 @@ const NotificationSchema = new Schema<INotification>(
           "failed",
           "retrying",
           "cancelled",
+          "delivered",
+          "opened",
         ],
+
         message: "{VALUE} is not a valid notification status",
       },
       default: "pending",
@@ -142,17 +189,10 @@ const NotificationSchema = new Schema<INotification>(
     lastError: {
       type: String,
     },
-
-    sentAt: {
-      type: Date,
-    },
   },
 
   {
-    timestamps: {
-      createdAt: true,
-      updatedAt: false,
-    },
+    timestamps: true,
   },
 );
 

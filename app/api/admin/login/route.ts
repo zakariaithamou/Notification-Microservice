@@ -1,6 +1,7 @@
-// app/api/admin/login/route.ts
+// Admin login route
 import { NextRequest, NextResponse } from "next/server";
 import { handleErrorResponse } from "@/utils/apiResponse";
+import { createAdminSession } from "@/lib/auth/session";
 
 export async function POST(req: NextRequest) {
   try {
@@ -22,6 +23,7 @@ export async function POST(req: NextRequest) {
         { status: 401 },
       );
     }
+    await createAdminSession();
 
     return NextResponse.json(
       {
