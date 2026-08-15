@@ -1,6 +1,6 @@
 import dbConnect from "@/lib/dbConnect";
 import Department from "@/db/models/Department";
-import crypto from "crypto"; // Use crypto instead of bcrypt
+import crypto from "crypto";
 
 export const verifyApiKey = async (apiKey: string) => {
   await dbConnect();

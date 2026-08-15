@@ -6,9 +6,9 @@ export interface IStudent extends Document {
   lastName: string;
   email: string;
   phone?: string;
-  promo: number;
-  filiere: string;
-  cycle: "preparatoire" | "ingenieur";
+  annee: number;
+  filiere?: string;
+  cycle: "preparatoire" | "ingenieur" | "licence" | "master";
   createdAt: Date;
 }
 
@@ -24,12 +24,18 @@ const StudentSchema = new Schema<IStudent>(
     lastName: { type: String, required: true },
     email: { type: String, required: true, unique: true },
     phone: { type: String },
-    promo: { type: Number, required: true, index: true },
-    filiere: { type: String, required: true },
+    annee: { type: Number, required: true, index: true },
+    filiere: {
+      type: String,
+      uppercase: true,
+      trim: true,
+      index: true,
+    },
     cycle: {
       type: String,
-      enum: ["preparatoire", "ingenieur"],
+      enum: ["preparatoire", "ingenieur", "licence", "master"],
       required: true,
+      index: true,
     },
   },
   { timestamps: true },

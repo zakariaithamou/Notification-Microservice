@@ -15,8 +15,9 @@ if (!MONGODB_URI) {
   );
 }
 
-/** * Global variable is used here to maintain a cached connection across hot reloads
- ** in development. This prevents database connections from growing exponentially. */
+/**
+ * Cache the connection across hot reloads.
+ */
 
 declare global {
   var mongoose: {

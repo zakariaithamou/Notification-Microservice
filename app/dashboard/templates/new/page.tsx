@@ -2,7 +2,8 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { TemplateChannel, CreateTemplateInput } from "@/types/template";
-
+import AIPromptModal from "@/app/dashboard/components/AIPromptModal";
+import { Sparkles } from "lucide-react";
 const channelLabels: Record<string, string> = {
   email: "Email",
   sms: "SMS",
@@ -23,20 +24,18 @@ export default function NewTemplatePage() {
     "single",
   );
   const [allowedChannels, setAllowedChannels] = useState<string[]>([]);
+  const [isAIModalOpen, setIsAIModalOpen] = useState<boolean>(false);
 
   useEffect(() => {
     const fetchProfile = async () => {
-      const key = localStorage.getItem("demo_apiKey");
-      if (!key) return;
-
       try {
-        // NOTE: Make sure you have an API route that returns the department's profile!
-        // If your route is named differently, update this URL.
-        const res = await fetch("/api/departments/me", {
-          headers: {
-            "x-api-key": key,
-          },
-        });
+        const res = await fetch("/api/departments/me");
+
+        if (res.status === 401) {
+          router.push("/");
+          return;
+        }
+
         const json = await res.json();
         if (json.success && json.data?.allowedChannels) {
           setAllowedChannels(json.data.allowedChannels);
@@ -47,7 +46,7 @@ export default function NewTemplatePage() {
     };
 
     fetchProfile();
-  }, []);
+  }, [router]);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -59,26 +58,23 @@ export default function NewTemplatePage() {
       channel,
       body,
       templateType,
-      // Only include subject if it's an email or push where it makes sense, though your backend accepts it for all
+      // Include subject when provided
       ...(subject && { subject }),
     };
 
     try {
-      // Get key directly from localStorage
-      const key = localStorage.getItem("demo_apiKey");
-      if (!key) {
-        router.push("/");
-        return;
-      }
-
       const response = await fetch("/api/templates", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-api-key": key,
         },
         body: JSON.stringify(payload),
       });
+
+      if (response.status === 401) {
+        router.push("/");
+        return;
+      }
 
       const data = await response.json();
       if (!response.ok)
@@ -98,7 +94,7 @@ export default function NewTemplatePage() {
   };
 
   return (
-    <div className="p-6 max-w-3xl mx-auto">
+    <div className="p-6 max-w-6xl mx-auto">
       <h1 className="text-2xl font-bold mb-6">Create New Template</h1>
 
       {error && (
@@ -136,12 +132,12 @@ export default function NewTemplatePage() {
             className="w-full border border-gray-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500 outline-none"
             required
           >
-            {/* Provide a default empty option so it doesn't auto-select a value accidentally */}
+            {/* Default empty option */}
             <option value="" disabled>
               Select a channel
             </option>
 
-            {/* 2. Dynamically map over the allowed channels fetched from the DB */}
+            {/* Render allowed channels */}
             {allowedChannels?.map((ch: string) => (
               <option key={ch} value={ch}>
                 {channelLabels[ch] || ch}
@@ -149,27 +145,28 @@ export default function NewTemplatePage() {
             ))}
           </select>
         </div>
-
+        {/* --- TEMPLATE TYPE BLOCK --- */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Template Type
+          </label>
+          <select
+            value={templateType}
+            onChange={(e) =>
+              setTemplateType(e.target.value as "single" | "diffusion")
+            }
+            className="w-full border border-gray-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500 outline-none"
+            required
+          >
+            <option value="single">Single </option>
+            <option value="diffusion">Diffusion </option>
+          </select>
+        </div>
+        {/* --- SUBJECT BLOCK --- */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Subject (Optional, mainly for Email)
           </label>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Template Type
-            </label>
-            <select
-              value={templateType}
-              onChange={(e) =>
-                setTemplateType(e.target.value as "single" | "diffusion")
-              }
-              className="w-full border border-gray-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500 outline-none"
-              required
-            >
-              <option value="single">Single Message (One Student)</option>
-              <option value="diffusion">Diffusion (Broadcast to Group)</option>
-            </select>
-          </div>
           <input
             type="text"
             value={subject}
@@ -178,18 +175,27 @@ export default function NewTemplatePage() {
             placeholder="Welcome to our platform!"
           />
         </div>
-
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Template Body (HTML or Text)
-          </label>
+          <div className="flex justify-between items-center mb-1">
+            <label className="block text-sm font-medium text-gray-700">
+              Template Body
+            </label>
+            <button
+              type="button"
+              onClick={() => setIsAIModalOpen(true)}
+              className="group inline-flex items-center gap-1.5 text-xs font-bold text-white bg-blue-950 hover:bg-blue-900 px-3.5 py-1.5 rounded-lg shadow-sm hover:shadow-md transition-all duration-200 active:scale-95"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-blue-300 animate-pulse group-hover:rotate-12 group-hover:scale-110 transition-transform duration-300" />
+              <span>Generate with AI</span>
+            </button>
+          </div>
           <textarea
             required
             minLength={5}
             rows={8}
             value={body}
             onChange={(e) => setBody(e.target.value)}
-            className="w-full border border-gray-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm"
+            className="w-full min-h-[300px] border border-gray-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm"
             placeholder="Hello {{name}}, welcome to..."
           />
         </div>
@@ -211,6 +217,13 @@ export default function NewTemplatePage() {
           </button>
         </div>
       </form>
+      {/* AI Prompt Modal Component */}
+      <AIPromptModal
+        isOpen={isAIModalOpen}
+        onClose={() => setIsAIModalOpen(false)}
+        channel={channel}
+        onGenerated={(generatedText: string) => setBody(generatedText)}
+      />
     </div>
   );
 }
