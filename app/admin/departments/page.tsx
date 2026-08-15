@@ -58,6 +58,16 @@ export default function DepartmentsPage() {
     fetchDepartments();
   }, []);
 
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-3">
+        <div className="w-12 h-12 border-4 border-blue-100 border-t-blue-900 rounded-full animate-spin"></div>
+
+        <span className="text-sm text-gray-500">Loading...</span>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       {/* Header section */}

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { Search, Mail } from "lucide-react";
 
 interface DepartmentInfo {
   _id: string;
@@ -20,7 +21,7 @@ type NotificationItem = {
   recipients: Recipient[];
   renderedSubject?: string;
   renderedBody?: string;
-  status: "pending" | "sending" | "sent" | "failed";
+  status: "pending" | "sending" | "sent" | "failed" | "delivered" | "opened";
   lastError?: string;
   attempts?: number;
   maxAttempts?: number;
@@ -35,21 +36,22 @@ export default function DashboardOverview() {
   const [stats, setStats] = useState({ templates: 0, notifications: 0 });
   const [history, setHistory] = useState<NotificationItem[]>([]);
 
+  // Filter states
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedStatus, setSelectedStatus] = useState("all");
+  const [selectedDateRange, setSelectedDateRange] = useState("all");
+
   useEffect(() => {
-    const deptId = localStorage.getItem("demo_departmentId");
-    const apiKey = localStorage.getItem("demo_apiKey");
-
-    if (!deptId || !apiKey) {
-      router.push("/");
-      return;
-    }
-
     const fetchHistory = async () => {
       try {
         const res = await fetch("/api/notifications", {
           method: "GET",
-          headers: { "x-api-key": apiKey },
         });
+
+        if (res.status === 401) {
+          router.push("/");
+          return;
+        }
         const responseData = await res.json();
 
         if (res.ok && responseData.success) {
@@ -60,32 +62,36 @@ export default function DashboardOverview() {
       }
     };
 
-    // Set up silent polling every 5 seconds for real-time UI updates
+    // Poll history every 5 seconds
     const intervalId = setInterval(() => {
       fetchHistory();
-    }, 5000);
+    }, 10000);
 
     const fetchDashboardData = async () => {
       try {
         const headers = {
-          "x-api-key": apiKey,
           "Content-Type": "application/json",
         };
 
-        // 1. Fetch Department Info
-        const deptRes = await fetch(`/api/departments/${deptId}`, { headers });
+        // Fetch department info
+        const deptRes = await fetch(`/api/departments/me`, { headers });
+
+        if (deptRes.status === 401 || deptRes.status === 403) {
+          router.push("/");
+          return;
+        }
+
         const deptData = await deptRes.json();
         if (deptRes.ok) setDeptInfo(deptData.data);
 
-        // 2. Fetch Templates to get count
+        // Fetch templates count
         const tempRes = await fetch(`/api/templates`, { headers });
         const tempData = await tempRes.json();
         const templatesCount = tempRes.ok ? tempData.data.length : 0;
 
-        // 3. Fetch Notifications to get count
+        // Fetch notifications count
         const notifRes = await fetch(`/api/notifications`, { headers });
         const notifData = await notifRes.json();
-        // Handling your specific 404/NOT_FOUND_ERROR if array is 0
         const notificationsCount = notifRes.ok ? notifData.data.length : 0;
 
         setStats({
@@ -104,29 +110,66 @@ export default function DashboardOverview() {
     return () => clearInterval(intervalId);
   }, [router]);
 
+  // Filtering Logic for Search, Status, and Date Range
+  const filteredNotifications = history.filter((item) => {
+    // 1. Search Query Filter (Checks recipient address, subject, or ID)
+    const matchesSearch =
+      item.recipients?.some((r) =>
+        r.address.toLowerCase().includes(searchQuery.toLowerCase()),
+      ) ||
+      item.renderedSubject?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item._id.toLowerCase().includes(searchQuery.toLowerCase());
+
+    // 2. Status Filter
+    const matchesStatus =
+      selectedStatus === "all" || item.status === selectedStatus;
+
+    // 3. Date Range Filter
+    let matchesDate = true;
+    const itemDate = new Date(item.createdAt);
+    const now = new Date();
+
+    if (selectedDateRange === "today") {
+      matchesDate = itemDate.toDateString() === now.toDateString();
+    } else if (selectedDateRange === "yesterday") {
+      const yesterday = new Date(now);
+      yesterday.setDate(now.getDate() - 1);
+      matchesDate = itemDate.toDateString() === yesterday.toDateString();
+    } else if (selectedDateRange === "3days") {
+      const threeDaysAgo = new Date(now);
+      threeDaysAgo.setDate(now.getDate() - 3);
+      matchesDate = itemDate >= threeDaysAgo;
+    } else if (selectedDateRange === "15days") {
+      const fifteenDaysAgo = new Date(now);
+      fifteenDaysAgo.setDate(now.getDate() - 15);
+      matchesDate = itemDate >= fifteenDaysAgo;
+    }
+
+    return matchesSearch && matchesStatus && matchesDate;
+  });
+
   if (loading) {
     return (
-      <div className="text-gray-500 animate-pulse">
-        Loading secure dashboard...
+      <div className="min-h-screen flex flex-col items-center justify-center gap-3">
+        <div className="w-12 h-12 border-4 border-blue-100 border-t-blue-900 rounded-full animate-spin"></div>
+
+        <span className="text-sm text-gray-500">Loading...</span>
       </div>
     );
   }
 
   return (
     <div className="max-w-5xl mx-auto space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">
-          Department Overview
-        </h1>
-        <p className="mt-2 text-gray-600">
-          Connected as{" "}
-          <span className="font-semibold text-blue-600">
+      <div className="flex justify-center">
+        <div className="inline-block relative">
+          <h1 className="text-3xl font-bold text-blue-950 px-6 py-3 border-2 border-blue-900 rounded-full">
             {deptInfo?.name || "Unknown"}
-          </span>
-        </p>
+          </h1>
+        </div>
       </div>
+
       {/* Quick Action Buttons */}
-      <div className="flex gap-3 mt-4 md:mt-0">
+      <div className="flex  justify-center gap-3 mt-4 md:mt-0">
         <Link
           href="/dashboard/templates"
           className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors shadow-sm"
@@ -192,7 +235,8 @@ export default function DashboardOverview() {
           </div>
         </div>
       </div>
-      {/* --- NOTIFICATION HISTORY TABLE --- */}
+
+      {/* --- NOTIFICATION HISTORY TABLE SECTION --- */}
       <div className="bg-white rounded-lg shadow overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-200">
           <h3 className="text-lg font-medium leading-6 text-gray-900">
@@ -203,13 +247,58 @@ export default function DashboardOverview() {
           </p>
         </div>
 
+        {/* Search and Filters Bar */}
+        <div className="p-6 bg-gray-50 border-b border-gray-200 flex flex-col sm:flex-row items-center justify-between gap-4">
+          {/* Search Bar */}
+          {/* Search Bar */}
+          <div className="relative w-full sm:w-72">
+            <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none text-gray-400">
+              <Search className="w-4 h-4" />
+            </span>
+            <input
+              type="text"
+              placeholder="Search..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+            />
+          </div>
+
+          {/* Date & Status Filter Dropdowns */}
+          <div className="flex items-center gap-3 w-full sm:w-auto">
+            {/* Date Range Filter */}
+            <select
+              value={selectedDateRange}
+              onChange={(e) => setSelectedDateRange(e.target.value)}
+              className="bg-white border border-gray-200 rounded-xl px-4 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all cursor-pointer"
+            >
+              <option value="all">All Time</option>
+              <option value="today">Today</option>
+              <option value="yesterday">Yesterday</option>
+              <option value="3days">Last 3 Days</option>
+              <option value="15days">Last 15 Days</option>
+            </select>
+
+            {/* Status Filter */}
+            <select
+              value={selectedStatus}
+              onChange={(e) => setSelectedStatus(e.target.value)}
+              className="bg-white border border-gray-200 rounded-xl px-4 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all cursor-pointer"
+            >
+              <option value="all">All Statuses</option>
+              <option value="sent">Sent</option>
+              <option value="delivered">Delivered</option>
+              <option value="opened">Opened</option>
+              <option value="failed">Failed</option>
+              <option value="sending">Sending</option>
+            </select>
+          </div>
+        </div>
+
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  ID
-                </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Recipient(s)
                 </th>
@@ -225,32 +314,66 @@ export default function DashboardOverview() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {history.map((item) => (
+              {filteredNotifications.map((item) => (
                 <tr
                   key={item._id}
                   onClick={() => router.push(`/dashboard/${item._id}`)}
                   className="hover:bg-gray-100 cursor-pointer transition-colors"
                 >
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">
-                    ...{item._id.slice(-6)}
-                  </td>
+                  {/* --- SINGLE  RECIPIENT COLUMN --- */}
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {item.recipients?.map((r) => r.address).join(", ") || "N/A"}
+                    <div className="flex items-center gap-3">
+                      {/* 1. Dynamic Status Icon Container */}
+                      <div
+                        className={`p-1.5 rounded-lg border ${
+                          item.status === "opened"
+                            ? "bg-blue-50 text-blue-600 border-blue-200"
+                            : item.status === "delivered"
+                              ? "bg-emerald-50 text-emerald-600 border-emerald-200"
+                              : item.status === "failed"
+                                ? "bg-red-50 text-red-600 border-red-200"
+                                : item.status === "sending"
+                                  ? "bg-indigo-50 text-indigo-600 border-indigo-200"
+                                  : item.status === "sent"
+                                    ? "bg-gray-50 text-gray-600 border-gray-200"
+                                    : "bg-yellow-50 text-yellow-600 border-yellow-200"
+                        }`}
+                      >
+                        <Mail className="w-4 h-4" />
+                      </div>
+
+                      {/* 2. First Email */}
+                      <span className="truncate max-w-50 font-medium">
+                        {item.recipients?.[0]?.address || "N/A"}
+                      </span>
+
+                      {/* 3. +19 Badge */}
+                      {item.recipients?.length > 1 && (
+                        <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium text-gray-600 bg-white border border-gray-200 rounded-xl shadow-sm">
+                          +{item.recipients.length - 1}
+                        </span>
+                      )}
+                    </div>
                   </td>
+                  {/* --- END OF RECIPIENT COLUMN --- */}
+
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 truncate max-w-xs">
                     {item.renderedSubject || "No Subject"}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span
-                      className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
-                      ${
-                        item.status === "sent"
-                          ? "bg-green-100 text-green-800"
-                          : item.status === "failed"
-                            ? "bg-red-100 text-red-800"
-                            : item.status === "sending"
-                              ? "bg-blue-100 text-blue-800"
-                              : "bg-yellow-100 text-yellow-800"
+                      className={`px-2 py-0.5 inline-flex items-center justify-center w-28 text-xs leading-5 font-semibold rounded-full capitalize ${
+                        item.status === "opened"
+                          ? "bg-blue-100 text-blue-800"
+                          : item.status === "delivered"
+                            ? "bg-emerald-100 text-emerald-800"
+                            : item.status === "sent"
+                              ? "bg-gray-100 text-gray-800"
+                              : item.status === "failed"
+                                ? "bg-red-100 text-red-800"
+                                : item.status === "sending"
+                                  ? "bg-indigo-100 text-indigo-800"
+                                  : "bg-yellow-100 text-yellow-800"
                       }`}
                     >
                       {item.status}
@@ -262,13 +385,13 @@ export default function DashboardOverview() {
                 </tr>
               ))}
 
-              {history.length === 0 && (
+              {filteredNotifications.length === 0 && (
                 <tr>
                   <td
                     colSpan={5}
                     className="px-6 py-8 text-center text-sm text-gray-500"
                   >
-                    No notifications found in the queue.
+                    No notifications found matching your filters.
                   </td>
                 </tr>
               )}

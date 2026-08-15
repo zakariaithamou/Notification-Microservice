@@ -4,13 +4,13 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertCircle, Loader2, Lock, User } from "lucide-react";
 
-// 1. Strict Interface for the Request Body
+// Request body
 interface AdminLoginRequest {
   username: string;
   apiKey: string;
 }
 
-// 2. Strict Interface for the API Response
+// API response
 interface AdminLoginResponse {
   success: boolean;
   message?: string;
@@ -51,8 +51,7 @@ export default function AdminLoginPage() {
       }
 
       // Store the token and redirect to the admin dashboard
-      if (data.data?.token) {
-        localStorage.setItem("admin_token", apiKey);
+      if (data.success) {
         router.push("/admin/departments");
       }
     } catch (err: unknown) {

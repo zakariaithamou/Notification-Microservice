@@ -8,41 +8,48 @@ if (!apiKey) {
   );
 }
 
+export interface SendBatchResult {
+  success: boolean;
+  data?: unknown;
+  error?: string | unknown;
+}
+
 export interface SendEmailPayload {
   to: string | string[];
   subject: string;
   html: string;
+  from?: string;
 }
+
 export interface SendEmailResult {
   success: boolean;
   messageId?: string;
   error?: string | unknown;
 }
 
-//// 2. Initialize the email provider
 class EmailService {
   public provider: Resend;
-  private defaultFrom = "Notification Service <onboarding@resend.dev>";
+  private defaultFrom = "Universiapolis Notifications <noreply@zakarianms.ma>";
 
   constructor() {
     this.provider = new Resend(apiKey);
     console.log("EamailService: Resend Provider initialized successfully. ");
   }
 
-  public async sendEmail(Payload: SendEmailPayload): Promise<SendEmailResult> {
-    console.log("EamilService : Attempting to send email to ${Payload.to}...");
+  public async sendEmail(payload: SendEmailPayload): Promise<SendEmailResult> {
+    console.log(`EmailService: Attempting to send email to ${payload.to}...`);
 
     try {
       const { data, error } = await this.provider.emails.send({
-        from: this.defaultFrom,
-        to: typeof Payload.to === "string" ? [Payload.to] : Payload.to,
-        subject: Payload.subject,
-        html: Payload.html,
+        from: payload.from || this.defaultFrom,
+        to: typeof payload.to === "string" ? [payload.to] : payload.to,
+        subject: payload.subject,
+        html: payload.html,
       });
 
       if (error) {
         console.error(
-          `EmailService: Provider error when sending to ${Payload.to}`,
+          `EmailService: Provider error when sending to ${payload.to}`,
           error,
         );
         return {
@@ -52,7 +59,7 @@ class EmailService {
       }
 
       console.log(
-        `EmailService: Successfully sent to ${Payload.to}. Message ID: ${data?.id}`,
+        `EmailService: Successfully sent to ${payload.to}. Message ID: ${data?.id}`,
       );
       return {
         success: true,
@@ -61,6 +68,54 @@ class EmailService {
     } catch (exception) {
       console.error(
         `EmailService: Critical exception during email send:`,
+        exception,
+      );
+
+      return {
+        success: false,
+        error:
+          exception instanceof Error
+            ? exception.message
+            : "Unknown internal error",
+      };
+    }
+  }
+
+  public async sendBatchEmails(
+    payloads: SendEmailPayload[],
+  ): Promise<SendBatchResult> {
+    console.log(
+      `EmailService: Attempting to send batch of ${payloads.length} emails...`,
+    );
+
+    try {
+      const formattedPayloads = payloads.map((payload) => ({
+        from: payload.from || this.defaultFrom,
+        to: typeof payload.to === "string" ? [payload.to] : payload.to,
+        subject: payload.subject,
+        html: payload.html,
+      }));
+
+      const { data, error } = await this.provider.batch.send(formattedPayloads);
+
+      if (error) {
+        console.error(`EmailService: Provider error when sending batch`, error);
+        return {
+          success: false,
+          error: error.message,
+        };
+      }
+
+      console.log(
+        `EmailService: Successfully sent batch of ${payloads.length} emails.`,
+      );
+      return {
+        success: true,
+        data,
+      };
+    } catch (exception) {
+      console.error(
+        `EmailService: Critical exception during batch send:`,
         exception,
       );
 

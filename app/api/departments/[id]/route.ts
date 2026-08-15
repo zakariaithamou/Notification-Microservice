@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import dbConnect from "@/lib/dbConnect";
-import { getDepartmentByIdService } from "@/services/department.service";
+import {
+  getDepartmentByIdService,
+  updateDepartmentService,
+} from "@/services/department.service";
 import { handleErrorResponse } from "@/utils/apiResponse";
-import { verifyApiKey } from "@/utils/verifyApiKey";
+import { requireAuth } from "@/lib/auth/requireAuth";
 import Department from "@/db/models/Department";
 
 export async function GET(
@@ -18,11 +21,11 @@ export async function GET(
     const resolvedParams = await params;
     const departmentId = resolvedParams.id;
 
-    //admin
+    // Admin bypass
     if (apiKey === adminKey) {
       // 1. Bypass the BOLA check and go straight to the database
       const department = await Department.findById(departmentId)
-        .select("-apiKeyHash")
+        .select("-apiKeyHash -password -otpCode -otpExpiry -trustedDevices")
         .lean();
 
       if (!department) {
@@ -37,21 +40,12 @@ export async function GET(
       );
     }
 
-    if (!apiKey) {
-      return NextResponse.json(
-        { success: false, error: "UNAUTHORIZED: API key missing" },
-        { status: 401 },
-      );
-    }
+    const sessionDeptId = await requireAuth();
 
-    const authenticatedDept = await verifyApiKey(apiKey);
+    // NEW: If the frontend asks for "me", automatically substitute the secure session ID!
+    const targetId = departmentId === "me" ? sessionDeptId : departmentId;
 
-    // Call the service, passing the dynamic 'id' from the URL
-    const department = await getDepartmentByIdService(
-      departmentId,
-      String(authenticatedDept._id),
-    );
-
+    const department = await getDepartmentByIdService(targetId, sessionDeptId);
     return NextResponse.json(
       {
         success: true,
@@ -60,7 +54,42 @@ export async function GET(
       { status: 200 },
     );
   } catch (error: unknown) {
-    // Rely on your centralized error handler
+    return handleErrorResponse(error);
+  }
+}
+
+export async function PUT(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    await dbConnect();
+
+    const apiKey = req.headers.get("x-api-key");
+    const adminKey = process.env.ADMIN_API_KEY;
+
+    if (apiKey !== adminKey) {
+      return NextResponse.json(
+        { success: false, error: "UNAUTHORIZED: Admin access required" },
+        { status: 401 },
+      );
+    }
+
+    const resolvedParams = await params;
+    const departmentId = resolvedParams.id;
+    const body = await req.json();
+
+    const department = await updateDepartmentService(departmentId, body);
+
+    return NextResponse.json(
+      {
+        success: true,
+        message: "Department updated successfully.",
+        data: department,
+      },
+      { status: 200 },
+    );
+  } catch (error: unknown) {
     return handleErrorResponse(error);
   }
 }
