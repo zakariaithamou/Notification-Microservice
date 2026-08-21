@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Eye, EyeOff, MessageSquare } from "lucide-react";
+import { siGmail, siWhatsapp } from "simple-icons/icons";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -13,6 +15,7 @@ export default function LoginPage() {
   const router = useRouter();
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
 
   const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -104,19 +107,45 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-gray-50 p-4">
-      <div className="w-full max-w-md space-y-8 rounded-xl bg-white p-10 shadow-lg border border-gray-100">
+    <main className="flex min-h-screen items-center justify-center bg-blue-950 p-6">
+      <div className="w-full max-w-md space-y-8 rounded-xl bg-white p-10 shadow-lg border border-gray-100 ">
         <div className="text-center">
-          <h2 className="mt-4 text-3xl font-extrabold text-gray-900">
-            Notification Microservice
+          <div className="flex justify-center items-center gap-4 mb-4">
+            <div className="h-11 w-11 rounded-full bg-red-50 flex items-center justify-center">
+              <svg
+                role="img"
+                viewBox="0 0 24 24"
+                className="h-6 w-6"
+                fill={`#${siGmail.hex}`}
+              >
+                <path d={siGmail.path} />
+              </svg>
+            </div>
+
+            <div className="h-11 w-11 rounded-full bg-green-50 flex items-center justify-center">
+              <svg
+                role="img"
+                viewBox="0 0 24 24"
+                className="h-6 w-6"
+                fill={`#${siWhatsapp.hex}`}
+              >
+                <path d={siWhatsapp.path} />
+              </svg>
+            </div>
+            <div className="h-11 w-11 rounded-full bg-blue-50 flex items-center justify-center">
+              <MessageSquare className="h-6 w-6 text-blue-600" />
+            </div>
+          </div>
+          <h2 className="mt-4 text-3xl font-extrabold text-blue-950">
+            System Notifications
           </h2>
-          <p className="mt-2 text-sm text-gray-600">
+          <p className="mt-2 text-sm text-blue-950">
             Authenticate your department
           </p>
         </div>
 
         <form
-          className="mt-8 space-y-6"
+          className="mt-8 space-y-8"
           onSubmit={
             step === 1
               ? handlePasswordSubmit
@@ -125,22 +154,22 @@ export default function LoginPage() {
                 : handleNewPasswordSubmit
           }
         >
-          <div className="space-y-4 rounded-md shadow-sm">
+          <div className="space-y-4 rounded-md  ">
             {step === 1 && (
               <>
                 <div>
                   <label
                     htmlFor="email"
-                    className="block text-center text-sm font-medium text-gray-700"
+                    className="block text-left text-sm font-medium text-black"
                   >
-                    Department Email
+                    Email
                   </label>
                   <input
                     id="email"
                     type="email"
                     required
                     disabled={isLoading}
-                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm disabled:bg-gray-100"
+                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 focus:border-blue-900 focus:outline-none focus:ring-blue-500 sm:text-sm disabled:bg-gray-100"
                     placeholder="dept@university.edu"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
@@ -149,20 +178,39 @@ export default function LoginPage() {
                 <div>
                   <label
                     htmlFor="password"
-                    className="block text-center text-sm font-medium text-gray-700"
+                    className="block text-left text-sm font-medium text-black"
                   >
                     Password
                   </label>
-                  <input
-                    id="password"
-                    type="password"
-                    required
-                    disabled={isLoading}
-                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm disabled:bg-gray-100"
-                    placeholder="Enter your password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                  />
+
+                  <div className="relative">
+                    <input
+                      id="password"
+                      type={showPassword ? "text" : "password"}
+                      required
+                      disabled={isLoading}
+                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 pr-10 text-gray-900 focus:border-blue-900 focus:outline-none focus:ring-blue-500 sm:text-sm disabled:bg-gray-100"
+                      placeholder="Enter your password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                    />
+
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      disabled={isLoading}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 disabled:cursor-not-allowed"
+                      aria-label={
+                        showPassword ? "Hide password" : "Show password"
+                      }
+                    >
+                      {showPassword ? (
+                        <EyeOff className="h-5 w-5" />
+                      ) : (
+                        <Eye className="h-5 w-5" />
+                      )}
+                    </button>
+                  </div>
                 </div>
               </>
             )}
@@ -195,8 +243,8 @@ export default function LoginPage() {
             {step === 3 && (
               <div className="animate-in fade-in slide-in-from-top-2 duration-300">
                 <div className="text-center mb-6">
-                  <h3 className="text-lg font-bold text-gray-900">
-                    Set Permanent Password
+                  <h3 className="text-lg font-bold text-blue-950">
+                    Set New Password
                   </h3>
                   <p className="text-sm text-gray-500 mt-1">
                     Please change your temporary administrator password to
@@ -209,29 +257,57 @@ export default function LoginPage() {
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       New Password
                     </label>
-                    <input
-                      type="password"
-                      required
-                      minLength={8}
-                      disabled={isLoading}
-                      className="block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 focus:border-blue-500 focus:outline-none sm:text-sm disabled:bg-gray-100"
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                    />
+                    <div className="relative">
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        required
+                        minLength={8}
+                        disabled={isLoading}
+                        className="block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 focus:border-blue-500 focus:outline-none sm:text-sm disabled:bg-gray-100"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        disabled={isLoading}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 disabled:cursor-not-allowed"
+                      >
+                        {showPassword ? (
+                          <EyeOff className="h-5 w-5" />
+                        ) : (
+                          <Eye className="h-5 w-5" />
+                        )}
+                      </button>
+                    </div>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Confirm New Password
                     </label>
-                    <input
-                      type="password"
-                      required
-                      minLength={8}
-                      disabled={isLoading}
-                      className="block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 focus:border-blue-500 focus:outline-none sm:text-sm disabled:bg-gray-100"
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                    />
+                    <div className="relative">
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        required
+                        minLength={8}
+                        disabled={isLoading}
+                        className="block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 focus:border-blue-500 focus:outline-none sm:text-sm disabled:bg-gray-100"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        disabled={isLoading}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 disabled:cursor-not-allowed"
+                      >
+                        {showPassword ? (
+                          <EyeOff className="h-5 w-5" />
+                        ) : (
+                          <Eye className="h-5 w-5" />
+                        )}
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -256,7 +332,7 @@ export default function LoginPage() {
                   ? "Sign In"
                   : step === 2
                     ? "Verify Code"
-                    : "Save & Continue"}
+                    : "Save"}
             </button>
 
             {step === 2 && (

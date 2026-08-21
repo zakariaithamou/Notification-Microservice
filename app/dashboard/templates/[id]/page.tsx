@@ -122,16 +122,13 @@ export default function UpdateTemplatePage({
     }
 
     try {
-      const key = localStorage.getItem("demo_apiKey");
       const res = await fetch(`/api/templates/${templateId}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
-          "x-api-key": key || "",
         },
         body: JSON.stringify(updates),
       });
-
       const data = await res.json();
 
       if (res.ok) {
