@@ -146,13 +146,6 @@ export default function MetricsPage() {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
 
   useEffect(() => {
-    // 1. Check Auth
-    const apiKey = localStorage.getItem("demo_apiKey");
-    if (!apiKey) {
-      router.push("/");
-      return;
-    }
-
     // 2. Define the async fetch
     const fetchData = async () => {
       try {
@@ -160,10 +153,12 @@ export default function MetricsPage() {
           `/api/notifications/metrics?days=${days}&channel=${channel}`,
           {
             method: "GET",
-            headers: { "x-api-key": apiKey },
-            cache: "no-store",
           },
         );
+        if (res.status === 401) {
+          router.push("/");
+          return;
+        }
 
         const responseData: ApiResponse = await res.json();
 
@@ -212,7 +207,7 @@ export default function MetricsPage() {
 
       // Otherwise, toggle it normally
       if (prev.includes(status)) {
-        // Prevent unchecking the very last item 
+        // Prevent unchecking the very last item
         if (prev.length === 1) return prev;
         return prev.filter((s) => s !== status);
       }
@@ -329,7 +324,6 @@ export default function MetricsPage() {
                 </svg>
               </button>
 
-             
               {/* Dropdown Menu */}
               {isFilterOpen && (
                 <div className="absolute right-0 z-10 mt-2 w-56 rounded-xl border border-gray-200 bg-white shadow-lg py-1.5">
@@ -342,7 +336,7 @@ export default function MetricsPage() {
                       <div className="h-2.5 w-2.5 rounded-full border-[2px] border-gray-600"></div>
                       <span>All Events</span>
                     </div>
-                   
+
                     {isAllSelected && (
                       <svg
                         className="w-4 h-4 text-gray-900"

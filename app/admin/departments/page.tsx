@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Plus, Building2, AlertCircle, Loader2 } from "lucide-react";
+import Department from "@/db/models/Department";
 
 interface IDepartmentClient {
   _id: string;
@@ -24,6 +25,8 @@ export default function DepartmentsPage() {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
+  console.log(departments);
+
   useEffect(() => {
     const fetchDepartments = async () => {
       try {
@@ -38,6 +41,8 @@ export default function DepartmentsPage() {
         });
 
         const json = (await res.json()) as DepartmentsResponse;
+        //  TODO
+        console.log(json);
 
         if (!res.ok || !json.success) {
           throw new Error(json.error || "Failed to fetch departments");
