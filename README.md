@@ -18,12 +18,13 @@ Key benefits of this decoupled architecture include:
 
 ## Technologies
 
-- **Framework:** [Next.js](https://nextjs.org) (App Router)
-- **Database:** MongoDB with Mongoose for schema modeling
-- **Validation:** Zod (or Joi) for incoming API request validation
-- **Queue & Retry Logic:** BullMQ and Redis (or MongoDB + Cron job for MVP)
-- **Email Provider:** Nodemailer (via SMTP/SendGrid/SES)
-- **SMS Provider:** Twilio or local SMS gateway
+- **Framework & Runtime:** [Next.js](https://nextjs.org) (App Router), TypeScript, Node.js
+- **Database:** MongoDB with [Mongoose](https://mongoosejs.com) for schema modeling
+- **Validation:** [Zod](https://zod.dev) for request schema validation
+- **Message Broker & Queue:** [RabbitMQ](https://www.rabbitmq.com) (AMQP persistent queue with dead-letter retries, deployed via Docker)
+- **Email Provider:** [Resend](https://resend.com) API for transactional emails
+- **SMS & Messaging:** [Twilio](https://www.twilio.com) for SMS and WhatsApp messaging
+- **Ingress & Webhook Tunneling:** Cloudflare Tunnels (`cloudflared`)
 
 ## Folder Structure
 
