@@ -1,21 +1,20 @@
 import mongoose from "mongoose";
 import Template from "@/db/models/Template";
 import Student from "@/db/models/Student";
-import { IDepartment } from "@/db/models/Department"; // Make sure this path matches your project
+import { IDepartment } from "@/db/models/Department";
 
-// 1. Define the exact shape of the incoming JSON body
+//  Define the shape JSON body
 export interface DispatchPayload {
   templateId: string;
   recipientEmail?: string;
   filters?: Record<string, string | number | boolean>;
 }
 
-// 2. Replace 'any' with strict types
 export async function processB2BDispatch(
   payload: DispatchPayload,
   authenticatedDept: IDepartment,
 ) {
-  // 1. VALIDATE THE TEMPLATE ID
+  //  ALIDATE THE TEMPLATE ID
   if (!payload.templateId) {
     return {
       success: false,
@@ -32,7 +31,7 @@ export async function processB2BDispatch(
     };
   }
 
-  // 2. FETCH AND VERIFY THE TEMPLATE
+  // FETCH AND VERIFY THE TEMPLATE
   const template = await Template.findById(payload.templateId);
 
   if (!template) {
@@ -59,7 +58,7 @@ export async function processB2BDispatch(
     };
   }
 
-  // 3. RESOLVE RECIPIENTS
+  // RESOLVE RECIPIENTS
   let recipients = [];
 
   if (payload.recipientEmail) {
@@ -97,14 +96,13 @@ export async function processB2BDispatch(
     };
   }
 
-  // 4. PROCESS DYNAMIC VARIABLES
+  // PROCESS DYNAMIC VARIABLES
   const messagesToDispatch = recipients.map((student) => {
     let personalizedBody = template.body;
 
     personalizedBody = personalizedBody.replace(
       /\{\{(\w+)\}\}/g,
       (match, key) => {
-        // Safely tell TypeScript that 'student' acts like a dictionary
         const studentData = student as Record<string, unknown>;
         return studentData[key] ? String(studentData[key]) : match;
       },

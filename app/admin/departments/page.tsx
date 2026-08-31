@@ -41,8 +41,6 @@ export default function DepartmentsPage() {
         });
 
         const json = (await res.json()) as DepartmentsResponse;
-        //  TODO
-        console.log(json);
 
         if (!res.ok || !json.success) {
           throw new Error(json.error || "Failed to fetch departments");
