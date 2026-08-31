@@ -14,7 +14,7 @@ Key benefits of this decoupled architecture include:
 
 ## Documentation
 
-> **System Architecture:** For a deep dive into how this microservice works under the hood—including the RabbitMQ message queues, security flows, and database models—please read the [Architecture Documentation](docs/ARCHITECTURE.md).
+> **System Architecture:** For a deep dive into how this microservice works under the hood—including the RabbitMQ message queues, security flows, and database models—please read the [Architecture Documentation](docs/Architecture.md).
 
 ## Technologies
 
